@@ -1,0 +1,371 @@
+---
+title: "EstudoDeCaso1"
+author: "Luiz Paulo Rodrigues Almeida"
+date: "2023-01-17"
+output: 
+  html_document: default
+---
+
+## Unificação e limpeza dos Datasets
+
+A análise proposta deve se basear nos dados dos últimos 12 meses de utilização das bicicletas da Cyclistic (nome fictício) empresa de aluguel de bicicletas com base na cidade de Chicago. 
+
+Os dados se encontram [nesse link](https://divvy-tripdata.s3.amazonaws.com/index.html) (dados cedidos pela empresa Motivate International Inc. sobs a essa [licença](https://www.divvybikes.com/data-license-agreement) armazenados no AWS), mas não estão em único arquivo e sim separados mês a mês, portanto, esse script tem como um dos principais objetivos a unificação e preparação desses arquivos em um único dataset.
+
+### Instalar e carregar as bibliotecas necessárias para os procedimentos
+```{r instalar e carregar bibliotecas}
+    #install.packages("tidyverse") #manipulações básicas como Rename e Mutate
+    #install.packages("lubridate") #manipular datas
+    #install.packages("janitor") #corrigir nomes de colunas e duplicatas
+    #install.packages("scales") #corrigir escalas com notação científica
+    #install.packages("knitr") #para o knit
+    #install.packages("dplyr")
+    library("tidyverse")
+    library("lubridate")
+    library("ggplot2")
+    library("janitor")
+    library("scales")
+    library("knitr")
+    library("dplyr")
+```
+
+### Carregar os arquivos 
+
+Primeiro vamos carregar um a um, adotando a convenção "nomedaempre_infoviagens_yyyymm" para cada dataframe
+
+```{r carregar datasets}
+    getwd() #verificar se estamos no diretório correto
+    #setwd() #Usar somente em caso de divergência nos diretórios
+    cyclistic_infoviagens_202201 <- read.csv("202201-divvy-tripdata.csv")
+    cyclistic_infoviagens_202202 <- read.csv("202202-divvy-tripdata.csv")
+    cyclistic_infoviagens_202203 <- read.csv("202203-divvy-tripdata.csv")
+    cyclistic_infoviagens_202204 <- read.csv("202204-divvy-tripdata.csv")
+    cyclistic_infoviagens_202205 <- read.csv("202205-divvy-tripdata.csv")
+    cyclistic_infoviagens_202206 <- read.csv("202206-divvy-tripdata.csv")
+    cyclistic_infoviagens_202207 <- read.csv("202207-divvy-tripdata.csv")
+    cyclistic_infoviagens_202208 <- read.csv("202208-divvy-tripdata.csv")
+    cyclistic_infoviagens_202209 <- read.csv("202209-divvy-tripdata.csv")
+    cyclistic_infoviagens_202210 <- read.csv("202210-divvy-tripdata.csv")
+    cyclistic_infoviagens_202211 <- read.csv("202211-divvy-tripdata.csv")
+    cyclistic_infoviagens_202212 <- read.csv("202212-divvy-tripdata.csv")
+```
+
+### Verificar se a estrutura de cada arquivo corresponde
+
+Essa etapa é necessário pois caso haja qualquer divergência, seja no nome das colunas ou no tipo de dados, será necessário fazer ajustes nos nomes daquelas colunas que forem diferentes ou nos tipos de dados que não estiverem em conformidade para que os datasets sejam unidos em um único dataframe com todos os dados.
+
+Como são muitos arquivos é bom realizar um comparação de dois em dois ou usar uma função, optei por usar uma função presente na biblioteca 'janitor'.
+
+```{r uniformizar os dataframes}
+
+    janitor::compare_df_cols(cyclistic_infoviagens_202201, 
+                             cyclistic_infoviagens_202202, 
+                             cyclistic_infoviagens_202203, 
+                             cyclistic_infoviagens_202204, 
+                             cyclistic_infoviagens_202205, 
+                             cyclistic_infoviagens_202206, 
+                             cyclistic_infoviagens_202207, 
+                             cyclistic_infoviagens_202208, 
+                             cyclistic_infoviagens_202209, 
+                             cyclistic_infoviagens_202210, 
+                             cyclistic_infoviagens_202211, 
+                             cyclistic_infoviagens_202212)
+
+```
+### Corrigir estrutura dos dataframes
+
+Incrivelmente todas as colunas e tipos de dados acabaram batendo, então não há necessidade de corrigir nada em nenhum dos dataframes relativo à estrutura antes de fundir todos eles.
+
+### Fundir os dataframes
+
+Nessa parte iremos juntar os 12 dataframes para criar um único dataframe gigante, também vou salvar esse dataframe como um dataset grande para poupar futuros problemas com carregamento (vale notar que somente o carregamente desses 12 datasets resultou em mais de 2,42GiB de memória Ram consumida - não daria para fazer isso na versão free do R Studio Cloud por exemplo)
+
+* Não rodar esse bloco indiscriminadamente, mesmo num pc gamer levou uns 7 minutos pra executar tudo.
+
+```{r fundir dados em um dataframe}
+    cyclistic_infoviagens_2022 <- rbind(cyclistic_infoviagens_202201, 
+                                        cyclistic_infoviagens_202202, 
+                                        cyclistic_infoviagens_202203, 
+                                        cyclistic_infoviagens_202204, 
+                                        cyclistic_infoviagens_202205, 
+                                        cyclistic_infoviagens_202206, 
+                                        cyclistic_infoviagens_202207, 
+                                        cyclistic_infoviagens_202208, 
+                                        cyclistic_infoviagens_202209, 
+                                        cyclistic_infoviagens_202210, 
+                                        cyclistic_infoviagens_202211, 
+                                        cyclistic_infoviagens_202212)
+
+    write.csv(cyclistic_infoviagens_2022, "cyclistic_infoviagens_2022.csv", row.names = FALSE)
+```
+
+### Verificando o novo dataset, algumas limpezas provavlemente serão necessárias.
+
+Com a análise vai se basear nos hábitos entre usuários casuais e assinantes, é necessário verificar a coluna membro (só deve possuir dois valores), criar um coluna para calcular as durações das corridas também pode ser uma boa ideia, é possível que esses dois grupos utilizem as bicicletas por tempos diferentes.
+
+Vamos também aproveitar para adicionar uma coluna com a duração da viagem no dataset, calculando o tempo entre o fim da viagem e o início da viagem.
+
+Algumas colunas trambém serão excluídas já que não terão impacto na analise, as colunas de latitude e longitude.
+
+```{r excluir e adicionar colunas}
+    #cyclistic_infoviagens_2022 <- read.csv("cyclistic_infoviagens_2022.csv") #apenas pra facilitar leitura
+
+    #verificar se só tem duas categorias de membro
+    unique(cyclistic_infoviagens_2022$member_casual) 
+    
+    #excluir as colunas de lat e lon
+    cyclistic_infoviagens <- cyclistic_infoviagens_2022[, -c(9,10,11,12)] 
+    
+    #duração da viagem
+    cyclistic_infoviagens$duration <- difftime(cyclistic_infoviagens$ended_at, 
+                                               cyclistic_infoviagens$started_at, units="mins") #converter pra numerico?
+    
+    #Também parece ser pertinente analisar os dias da semana, então vamos criar uma nova coluna
+    cyclistic_infoviagens$weekday <- weekdays(as.Date(cyclistic_infoviagens$started_at))
+      
+    str(cyclistic_infoviagens)
+```
+
+### Verificando NAs, NaN e nulos
+
+Existe um total de 5.667.717 observações no banco de dados, mas eliminaremos da análise NAs e valores nulos porque eles podem influenciar muito, negativamente, na análise dependendo das colunas que tiverem esses valores. Exemplo: local de partida e local de chegada são essenciais para a análise
+
+Update: adicionei as_tibble nas consultas para não gerar um relatório imenso ao fazer o knit
+
+```{r proceder com a limpeza}
+    #Verificar colunas de inicio de viagem
+    as_tibble(cyclistic_infoviagens) %>% 
+                            filter((is.na(start_station_name) | start_station_name =="" | start_station_name ==" ")& 
+                                     is.na(start_station_id) | (start_station_id =="" | start_station_id ==" "))
+
+    #Verificar colunas de fim de viagem
+    as_tibble(cyclistic_infoviagens) %>% 
+                            filter((is.na(end_station_name) | end_station_name =="" | end_station_name ==" ")& 
+                                     is.na(end_station_id) | (end_station_id =="" | end_station_id ==" "))
+    
+    #Verificar colunas de início e fim de viagem simultaneamente
+    as_tibble(cyclistic_infoviagens) %>% 
+                            filter(((is.na(end_station_name) | end_station_name =="" | end_station_name ==" ") & 
+                                    (is.na(end_station_id) | end_station_id =="" | end_station_id ==" "))
+                                    | 
+                                  ((is.na(start_station_name)| start_station_name =="" |start_station_name ==" ") & 
+                                    (is.na(start_station_id) | start_station_id =="" | start_station_id ==" ")))
+    
+    #Verificar se existe alguma duração negativa de viagem
+    as_tibble(cyclistic_infoviagens) %>% filter(duration <= 0) 
+    
+    #escrever novo dataframe limpo - cláusula ! extremamente importante, queremos tudo exceto os que tem problema
+    cyclistic_viagens_l <- cyclistic_infoviagens %>% 
+                              filter(!(((is.na(end_station_name) | end_station_name =="" | end_station_name ==" ") & 
+                                      (is.na(end_station_id) | end_station_id =="" | end_station_id ==" "))
+                                      | 
+                                    ((is.na(start_station_name)| start_station_name =="" |start_station_name ==" ") & 
+                                      (is.na(start_station_id) | start_station_id =="" | start_station_id ==" "))
+                                      |
+                                    (duration <=0)
+                                    ))
+    
+    #No caso de haver qualquer outra coluna com algum valor NA - Só funciona para NAs
+    cyclistic_viagens_l <- na.omit(cyclistic_viagens_l)
+    
+    #Colocar uma coluna de hora de início, vai ajudar a encontrar padrões mais tarde
+    cyclistic_viagens_l$hora_i <- format(as.POSIXct(cyclistic_viagens_l$started_at), format= "%H:%M:%S")
+    
+    #Escrever novo arquivo CSV, limpa, quase pronto para análise
+    write.csv(cyclistic_viagens_l, "cyclistic_viagens_l.csv", row.names = FALSE)                                    
+```
+
+### Informações sobre a limpeza
+
+Foram encontradas:
+
+* Linhas sem id e nome da estação de início: 833.064
+* Linhas sem id e nome da estação de fim: 892.742
+* Linhas sem id e nome da estação de início ou fim juntas: 1,298,357
+* Linhas onde a duração da viagem é 0 ou negativa: 531
+* Linhas onde não há informação do local de saída, chegada ou a duração é zero: 1,298,665
+
+O número de viagem com problema de preenchimento é extremamente significativo, aconselhável contato com os engenheiros de dados para verificar porque tais informações não foram registradas, já que não é possível delimitar o motivo apenas com os dados fornecidos para esta análise.
+
+Um novo arquivo com os dados limpos foi criado para a análise (cyclistic_viagens_l), a intenção é poupar processamento no caso dos passos dessa análise precisar ser refeita, o novo dataset tem 4.369.052 registros com 11 variáveis.
+
+### Começar a análise em si
+
+Vamos ordenar a tabela e obter estatítsicas basicas para depois comparar essas estatisticas com filtros mais específicos de acordo com os usuários membros ou casuais.
+
+```{r análise exploratória}
+    
+    #Sobre tempos de viagens muito curtos
+    'ao filtrar por tempo de viagem é possível notar tempos de viagens muito pequenos, como se os usuários tivessem
+    pego as bicicletas e desistido logo em seguida - talvez seja bom investigar isso ou não levar em consideração
+    tempos muito baixos'
+    head(cyclistic_viagens_l[order(cyclistic_viagens_l$duration),] )
+    as_tibble(cyclistic_viagens_l) %>% 
+          filter((duration <=1) & (start_station_id == end_station_id))
+    
+    #Atualizar o dataframe, removendo esses registros estranhos
+    cyclistic_viagens_l <- cyclistic_viagens_l %>% 
+          filter(!((duration <=1) & (start_station_id == end_station_id)))
+    
+    #Média da duração de cada viagem
+    mean(cyclistic_viagens_l$duration)
+    #mediana dos tempos de viagem
+    median(cyclistic_viagens_l$duration)
+    #Corrida mais longa
+    max(cyclistic_viagens_l$duration)
+    #Número de viagens por dia da semana
+    table(cyclistic_viagens_l$weekday)
+    
+    ordem = c("domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado")
+    #Dias da semana mais utilizados
+    ggplot(data = cyclistic_viagens_l) +
+        geom_bar(mapping = aes(x = weekday, fill=member_casual)) +
+        scale_x_discrete (limits = ordem) +
+        scale_y_continuous(labels= unit_format(unit="", scale=1/1e03, digits = 2)) +
+        labs(title="Todos Usuários vs Dia da Semana", 
+             subtitle="Habitos de uso de todos os usuários ao longo da semana" , 
+             x=NULL, 
+             y="Número de viagem (em milhares)") +
+        theme(legend.title = element_blank()) 
+    
+    #Estações de início de viagem com maior e menor movimento
+    top_station_all <- cyclistic_viagens_l %>% count(start_station_name) %>% arrange(desc(n)) %>% head(10)
+    worst_station_all <- cyclistic_viagens_l %>% count(start_station_name) %>% arrange(n) %>% head(10)
+    
+    cyclistic_viagens_member <- cyclistic_viagens_l %>% filter(member_casual=="member")
+    cyclistic_viagens_casual <- cyclistic_viagens_l %>% filter(member_casual=="casual")
+    
+    #adicionando uma coluna de hora e uma de período ao dataframe de membros
+    cyclistic_viagens_member$hora_i <- format(as.POSIXct(cyclistic_viagens_member$started_at), format= "%H:%M:%S")
+    cyclistic_viagens_member <- cyclistic_viagens_member %>% 
+                                  mutate(periodo = case_when(
+                                    hora_i >= "06:00:00" & hora_i < "11:59:59" ~"manha",
+                                    hora_i >= "12:00:00" & hora_i < "17:59:59" ~"tarde",
+                                    hora_i >= "18:00:00" & hora_i < "23:59:59" ~"noite",
+                                    TRUE ~"madrugada")
+                                  )
+    ajuste_y <- c(0, 1100000)
+    ajuste_y2 <- c(0, 1750000)
+    quebras <- c(0, 300000, 600000, 900000)
+    
+    #Estatisticas básicas sobre membros
+    mean(cyclistic_viagens_member$duration)
+    median(cyclistic_viagens_member$duration)
+    max(cyclistic_viagens_member$duration)
+    table(cyclistic_viagens_member$weekday)
+    ggplot(data = cyclistic_viagens_member) +
+        geom_bar(mapping = aes(x = weekday, fill=member_casual)) +
+        scale_fill_manual(values = "#00BFC4") +
+        scale_x_discrete (limits = ordem) +
+        scale_y_continuous(labels= unit_format(unit="", scale=1/1e03, digits = 2)) +
+        labs(title="Membros vs Dia da Semana", 
+             subtitle="Habitos de uso dos usuários assinantes ao longo da semana" , 
+             x=NULL, 
+             y="Número de viagens (em milhares)") +
+        theme(legend.title = element_blank()) 
+    
+    ggplot(data = cyclistic_viagens_member) +
+      geom_bar(mapping = aes(x = periodo, fill=periodo)) +
+      #scale_x_discrete (limits = ordem) +
+      scale_y_continuous(labels= unit_format(unit="", scale=1/1e03, digits = 2), limits = ajuste_y) +
+      labs(title="Período do dia mais utilizado pelos Membros", 
+             x=NULL, 
+             y="Número de viagens (em milhares)",
+             fill="Período") 
+    
+    ggplot(data = cyclistic_viagens_member) +
+      geom_bar(mapping = aes(x = rideable_type, fill=rideable_type)) +
+      #scale_x_discrete (limits = ordem) +
+      scale_y_continuous(labels= unit_format(unit="", scale=1/1e03, digits = 2), limits = ajuste_y2) +
+      labs(title="Preferência dos membros", 
+             subtitle = "Tipo de bicicleta preferida dos casuais",
+             x=NULL, 
+             y="Número de viagens (em milhares)",
+             fill="Período") 
+    
+    top_station_member <- cyclistic_viagens_member %>% count(start_station_name) %>% arrange(desc(n)) %>% head(10)
+    worst_station_member <- cyclistic_viagens_member %>% count(start_station_name) %>% arrange(n) %>% head(10)
+    bike_pref_member <- cyclistic_viagens_member %>% count(rideable_type) %>% arrange(n)
+    weekdays_member <- cyclistic_viagens_member %>% count(weekday) %>% arrange(n)
+    period_member <- cyclistic_viagens_member %>% count(periodo) %>% arrange(n)
+    
+    #Adicionando uma coluna de hora e uma de período ao dataframe de casuais
+    cyclistic_viagens_casual$hora_i <- format(as.POSIXct(cyclistic_viagens_casual$started_at), format= "%H:%M:%S")
+    cyclistic_viagens_casual <- cyclistic_viagens_casual %>% 
+                                  mutate(periodo = case_when(
+                                    hora_i >= "06:00:00" & hora_i < "11:59:59" ~"manha",
+                                    hora_i >= "12:00:00" & hora_i < "17:59:59" ~"tarde",
+                                    hora_i >= "18:00:00" & hora_i < "23:59:59" ~"noite",
+                                    TRUE ~"madrugada")
+                                  )
+    
+    #Estatisticas basicas sobre casuais
+    mean(cyclistic_viagens_casual$duration)
+    median(cyclistic_viagens_casual$duration)
+    max(cyclistic_viagens_casual$duration)
+    table(cyclistic_viagens_casual$weekday)
+    ggplot(data = cyclistic_viagens_casual) +
+        geom_bar(mapping = aes(x = weekday, fill=member_casual)) +
+        scale_x_discrete (limits = ordem) +
+        scale_y_continuous(labels= unit_format(unit="", scale=1/1e03, digits = 2)) +
+        scale_fill_manual(values = "#F8766D") +
+        labs(title="Casuais vs Dia da Semana", 
+             subtitle="Habitos de uso dos usuários casuais ao longo da semana" , 
+             x=NULL, 
+             y="Número de viagens (em milhares)",
+             fill="Tipo de usuário") +
+        theme(legend.title = element_blank()) 
+    
+    top_station_casual <- cyclistic_viagens_casual %>% count(start_station_name) %>% arrange(desc(n)) %>% head(10)
+    worst_station_casual <- cyclistic_viagens_casual %>% count(start_station_name) %>% arrange(n) %>% head(10)
+    bike_pref_casual <- cyclistic_viagens_casual %>% count(rideable_type) %>% arrange(n)
+    weekdays_casual <- cyclistic_viagens_casual %>% count(weekday) %>% arrange(n)
+    period_casual <- cyclistic_viagens_casual %>% count(periodo) %>% arrange(n)
+    
+    ggplot(data = cyclistic_viagens_casual) +
+      geom_bar(mapping = aes(x = weekday, fill=periodo)) +
+      scale_x_discrete (limits = ordem) +
+      scale_y_continuous(labels= unit_format(unit="", scale=1/1e03, digits = 2)) +
+      
+      labs(title="Período do dia mais utilizado pelos Casuais", 
+             x=NULL, 
+             y="Número de viagens (em milhares)",
+             fill="Período") 
+    
+    ggplot(data = cyclistic_viagens_casual) +
+      geom_bar(mapping = aes(x = periodo, fill=periodo)) +
+      #scale_x_discrete (limits = ordem) +
+      scale_y_continuous(labels= unit_format(unit="", scale=1/1e03, digits = 2), limits = ajuste_y, breaks = quebras) +
+      labs(title="Período do dia mais utilizado pelos Casuais", 
+             x=NULL, 
+             y="Número de viagens (em milhares)",
+             fill="Período") 
+    
+    ggplot(data = cyclistic_viagens_casual) +
+      geom_bar(mapping = aes(x = rideable_type, fill=rideable_type)) +
+      #scale_x_discrete (limits = ordem) +
+      scale_y_continuous(labels= unit_format(unit="", scale=1/1e03, digits = 2), limits = ajuste_y2) +
+      labs(title="Preferência do público casual",
+             subtitle = "Tipo de bicicleta preferida dos casuais",
+             x=NULL, 
+             y="Número de viagens (em milhares)",
+             fill="Período") 
+
+                                    
+```
+
+### Descobertas
+
+Primeiro vale notar que há 74.464 registros onde a duração da viagem é inferior a 1 minuto e a bike foi pega e devolvida no mesmo ponto, ou seja, é possível que esses usuários tenham tido algum problema ou mesmo tenham desistido de utilizar as bikes, é necessário uma pesquisa a respeito desses usuários para descobrir os motivos de tanta desistência.
+
+Para a nossa análise, esses registros serão deixados de lado por podem influenciar nas estatisticas básicas.
+
+Há também alguns outliers de corridas com duração muito elevada, de mais de um mês, mas são poquíssimos registros que se enquadram nesses outliers, então foram mantidos na análise porque não vão impactar na tarefa de negócios que é objeto dessa análise.
+
+Há uma tendência clara dos membros em utilizar as bicicletas como meio de transporte para trabalho/escola pelo cruzamento dos dias da semana onde são mais utilizadas juntamente com o horário de uso.
+
+O marketing deve trabalhar de modo a convencer os usuários casuais de que vale a pena utilizar as bikes para evitar trânsito, por serem menos poluentes e, principalmente, porque a media de tempo de cada corrida desses usuários é de 24 minutos - ao se tornar membro para bicicletas tradicionais você não paga pra retirar a bike e nem nenhum valor até 45 minutos de corrida (INFORMAÇÃO RETIRADA DO SITE QUE REALIZA O ALUGUEL DAS BICILETAS) - sendo muito vantajoso o plano.
+
+O ranking de estações mais utilizadas pelos casuais também ajuda a direcionar a campanha de marketing para lojas e estabeleciomentos específicos dessas regiões - é uma pena que o banco de dados não contem a faixa etaria dos usuários, uma vez que seria ainda mais fácil direcionar a campanha de marketing para um público extremamente selecionado.
+
+Obs.: no futuro podemos criar um dataframe para colocar todas as médias em um único dataframe e plotar gráficos pelo próprio R, acabei fazendo esses gráficos mais simples no Excell
